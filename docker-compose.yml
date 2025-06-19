@@ -178,18 +178,26 @@ services:
     environment:
       AUTHENTICATION_TYPE: apikey
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
-      CONFIG_SESSION_PHONE_VERSION: ${EVOLUTION_PHONE_VERSION}
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      DATABASE_CONNECTION_DB_PREFIX_NAME: evo
       CACHE_REDIS_ENABLED: "true"
       CACHE_REDIS_URI: redis://default:${REDIS_PASSWORD}@redis:6379/6
       CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_REDIS_TTL: 604800
       LOG_LEVEL: info
-      WEBHOOK_GLOBAL_ENABLED: "true"
+      WEBSOCKET_ENABLED: "true"
+      WEBSOCKET_GLOBAL_EVENTS: "true"
       CONFIG_SESSION_PHONE_NAME: "Evolution API"
+      CONFIG_SESSION_PHONE_VERSION: ${EVOLUTION_PHONE_VERSION}
+      RABBITMQ_ENABLED: "true"
+      RABBITMQ_GLOBAL_ENABLED: "true"
+      RABBITMQ_URI: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      RABBITMQ_EXCHANGE_NAME: evolution_exchange
     volumes:
-      - evolution_data:/lab_evolution/instances # Persistência de instâncias
+      - evolution_store:/evolution/store
+      - evolution_instances:/evolution/instances
     depends_on:
       postgres:
         condition: service_healthy
@@ -380,7 +388,8 @@ volumes:
   redis_data:
   n8n_data:
   n8n_logs:
-  evolution_data:
+  evolution_store:
+  evolution_instances:
   ollama_data:
   prometheus_data:
   grafana_data:
