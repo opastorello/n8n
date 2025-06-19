@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   # Banco de Dados PostgreSQL
   # Armazenamento relacional com suporte a UTF-8 e localização pt_BR.
