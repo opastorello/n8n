@@ -77,11 +77,11 @@ Este projeto define uma stack de serviços orquestrados com Docker Compose, proj
 ## Como Executar
 1. Inicie os serviços em segundo plano:
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 2. Monitore os logs, se necessário:
    ```bash
-   docker-compose logs -f
+   docker compose logs -f
    ```
 3. Acesse os serviços pelas portas configuradas:
    - Grafana: `http://localhost:3000`
@@ -93,19 +93,19 @@ Este projeto define uma stack de serviços orquestrados com Docker Compose, proj
 ## Gerenciamento
 - **Parar os serviços**:
   ```bash
-  docker-compose down
+  docker compose down
   ```
 - **Remover volumes** (limpa dados persistentes):
   ```bash
-  docker-compose down --volumes
+  docker compose down --volumes
   ```
 - **Verificar status**:
   ```bash
-  docker-compose ps
+  docker compose ps
   ```
 - **Reiniciar um serviço específico**:
   ```bash
-  docker-compose restart <serviço>
+  docker compose restart <serviço>
   ```
 
 ## Observações
