@@ -1,5 +1,3 @@
-version: '3'
-
 services:
   # Chatwoot: Plataforma de atendimento ao cliente
   # Combina rails (web) e sidekiq (workers) para chats em tempo real
@@ -128,7 +126,7 @@ services:
       BAILEYS_PROVIDER_DEFAULT_API_KEY: ${SERVICE_PASSWORD_64_BAILEYSDEFAULTAPIKEY}
       BAILEYS_PROVIDER_USE_INTERNAL_HOST_URL: "true"
       ACTIVE_STORAGE_SERVICE: minio
-      AWS_ACCESS_KEY_ID: ${MINIO_user}
+      AWS_ACCESS_KEY_ID: ${MINIO_USER}
       AWS_SECRET_ACCESS_KEY: ${MINIO_PORT_ROOT_PASSWORD}
       AWS_REGION: us-east-1
       AWS_BUCKET: chatwoot
