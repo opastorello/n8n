@@ -331,29 +331,7 @@ services:
         condition: service_healthy
     networks:
       - minha_rede
-
-  # Ollama: Execução de modelos de linguagem
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: always
-    ports:
-      - "11434:11434" # Porta para API
-    environment:
-      OLLAMA_HOST: 0.0.0.0:11434
-      OLLAMA_MODELS: /root/.ollama/models
-      OLLAMA_KEEP_ALIVE: 5m
-      OLLAMA_ORIGINS: "*"
-    volumes:
-      - ollama_data:/root/.ollama # Persistência de modelos
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - minha_rede
-
+      
   # Prometheus: Sistema de monitoramento
   prometheus:
     image: prom/prometheus:latest
@@ -501,7 +479,6 @@ volumes:
   baileys_data:
   chatwoot_data:
   chatwoot_logs:
-  ollama_data:
   prometheus_data:
   grafana_data:
   loki_data:
