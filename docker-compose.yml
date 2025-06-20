@@ -1,157 +1,274 @@
+version: '3'
+
 services:
-  # Banco de Dados PostgreSQL
-  # Armazenamento relacional com suporte a UTF-8 e localização pt_BR.
-  postgres:
-    image: postgres:15-alpine
-    container_name: postgres
-    restart: unless-stopped
+  # Chatwoot: Plataforma de atendimento ao cliente
+  # Combina rails (web) e sidekiq (workers) para chats em tempo real
+  chatwoot:
+    image: ghcr.io/fazer-ai/chatwoot:latest
+    pull_policy: always
+    container_name: chatwoot
+    restart: always
     ports:
-      - "5432:5432" # Porta padrão do PostgreSQL
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER} # Usuário do banco
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} # Senha do banco
-      POSTGRES_DB: ${POSTGRES_DB} # Nome do banco
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=pt_BR.UTF-8" # Codificação e localização
+      - "3001:3000" # Porta para interface web
     volumes:
-      - postgres_data:/var/lib/postgresql/data # Persistência de dados
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"] # Verifica disponibilidade
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - minha_rede
-
-  # Adminer: Interface web para gerenciamento do PostgreSQL
-  # Interface leve para administração de bancos de dados.
-  adminer:
-    image: adminer:latest
-    container_name: adminer
-    restart: unless-stopped
-    ports:
-      - "8081:8080" # Porta para acesso web
+      - chatwoot_data:/app/storage # Persistência de dados
+      - chatwoot_logs:/app/log # Persistência de logs
     environment:
-      ADMINER_DEFAULT_SERVER: postgres # Servidor padrão
-      ADMINER_DESIGN: pepa-linha # Tema visual
-      ADMINER_PLUGINS: "tables-filter tinymce" # Plugins para filtragem e editor
-    depends_on:
-      postgres:
-        condition: service_healthy # Inicia após PostgreSQL estar saudável
-    networks:
-      - minha_rede
-
-  # Backup Automático do PostgreSQL
-  # Realiza backups diários com retenção configurável.
-  postgres_backup:
-    image: prodrigestivill/postgres-backup-local
-    container_name: postgres_backup
-    restart: unless-stopped
-    environment:
-      POSTGRES_HOST: postgres # Host do banco
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_EXTRA_OPTS: "-Z9 --schema=public" # Opções de compactação
-      SCHEDULE: "@daily" # Backup diário
-      BACKUP_KEEP_DAYS: 7 # Retenção de backups diários
-      BACKUP_KEEP_WEEKS: 4 # Retenção de backups semanais
-      BACKUP_KEEP_MONTHS: 6 # Retenção de backups mensais
-      BACKUP_DIR: /backups # Diretório de backups
-      HEALTHCHECK_PORT: 8082 # Porta para healthcheck
-    volumes:
-      - postgres_backup:/backups # Persistência de backups
-    depends_on:
-      postgres:
-        condition: service_healthy # Inicia após PostgreSQL estar saudável
-    networks:
-      - minha_rede
-
-  # Exportador de Métricas do PostgreSQL
-  # Coleta métricas para monitoramento via Prometheus.
-  postgres_exporter:
-    image: prometheuscommunity/postgres-exporter
-    container_name: postgres_exporter
-    restart: unless-stopped
-    ports:
-      - "9187:9187" # Porta para métricas
-    environment:
-      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+      # Configurações gerais
+      NODE_ENV: production
+      RAILS_ENV: production
+      INSTALLATION_ENV: docker
+      DEFAULT_LOCALE: pt_BR
+      FRONTEND_URL: ${FRONTEND_URL}
+      INTERNAL_HOST_URL: http://chatwoot:3000
+      SECRET_KEY_BASE: ${SERVICE_PASSWORD_64_SECRETKEYBASE}
+      TIMEZONE: ${GENERIC_TIMEZONE}
+      # Configurações do banco de dados PostgreSQL
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USERNAME: ${SERVICE_USER_POSTGRES}
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
+      POSTGRES_DATABASE: ${POSTGRES_DB:-chatwoot_production}
+      # Configurações do Redis
+      REDIS_URL: redis://default:${SERVICE_PASSWORD_REDIS}@redis:6379
+      REDIS_PASSWORD: ${SERVICE_PASSWORD_REDIS}
+      # Configurações do RabbitMQ
+      AMQP_HOSTNAME: rabbitmq
+      AMQP_USERNAME: ${RABBITMQ_USER}
+      AMQP_PASSWORD: ${RABBITMQ_PASSWORD}
+      AMQP_PORT: 5672
+      AMQP_VHOST: "/"
+      # Integração com Baileys API (WhatsApp)
+      BAILEYS_PROVIDER_DEFAULT_CLIENT_NAME: ${BAILEYS_PROVIDER_DEFAULT_CLIENT_NAME}
+      BAILEYS_PROVIDER_DEFAULT_URL: http://baileys-api:3025
+      BAILEYS_PROVIDER_DEFAULT_API_KEY: ${SERVICE_PASSWORD_64_BAILEYSDEFAULTAPIKEY}
+      BAILEYS_PROVIDER_USE_INTERNAL_HOST_URL: "true"
+      # Integração com MinIO (armazenamento)
+      ACTIVE_STORAGE_SERVICE: minio
+      AWS_ACCESS_KEY_ID: ${MINIO_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_PORT_ROOT_PASSWORD}
+      AWS_REGION: us-east-1
+      AWS_BUCKET: chatwoot
+      AWS_HOST: minio:9000
+      AWS_ENDPOINT: http://minio:9000
+      AWS_PATH_STYLE: true
+      # Configurações de SMTP
+      MAILER_SENDER_EMAIL: ${MAILER_SENDER_EMAIL}
+      SMTP_ADDRESS: ${SMTP_ADDRESS}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_AUTHENTICATION: plain
+    entrypoint: docker/entrypoints/rails.sh
+    command:
+      - bundle
+      - exec
+      - rails
+      - s
+      - '-p'
+      - '3000'
+      - '-b'
+      - 0.0.0.0
+    post_start:
+      - command:
+          - bundle
+          - exec
+          - rails
+          - db:chatwoot_prepare
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      baileys-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --header='Accept: text/html' http://127.0.0.1:3000/ || exit 1"]
+      interval: 60s
+      timeout: 20s
+      retries: 10
+    networks:
+      - minha_rede
+
+  # Chatwoot Sidekiq: Workers para processamento assíncrono
+  chatwoot_sidekiq:
+    image: ghcr.io/fazer-ai/chatwoot:latest
+    pull_policy: always
+    container_name: chatwoot_sidekiq
+    restart: always
+    volumes:
+      - chatwoot_data:/app/storage #(branch: Persistência de dados
+      - chatwoot_logs:/app/log # Persistência de logs
+    environment:
+      # Mesmas variáveis do serviço chatwoot
+      NODE_ENV: production
+      RAILS_ENV: production
+      INSTALLATION_ENV: docker
+      DEFAULT_LOCALE: pt_BR
+      FRONTEND_URL: ${FRONTEND_URL}
+      INTERNAL_HOST_URL: http://chatwoot:3000
+      SECRET_KEY_BASE: ${SERVICE_PASSWORD_64_SECRETKEYBASE}
+      TIMEZONE: ${GENERIC_TIMEZONE}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USERNAME: ${SERVICE_USER_POSTGRES}
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
+      POSTGRES_DATABASE: ${POSTGRES_DB:-chatwoot_production}
+      REDIS_URL: redis://default:${SERVICE_PASSWORD_REDIS}@redis:6379
+      REDIS_PASSWORD: ${SERVICE_PASSWORD_REDIS}
+      AMQP_HOSTNAME: rabbitmq
+      AMQP_USERNAME: ${RABBITMQ_USER}
+      AMQP_PASSWORD: ${RABBITMQ_PASSWORD}
+      AMQP_PORT: 5672
+      AMQP_VHOST: "/"
+      BAILEYS_PROVIDER_DEFAULT_CLIENT_NAME: ${BAILEYS_PROVIDER_DEFAULT_CLIENT_NAME}
+      BAILEYS_PROVIDER_DEFAULT_URL: http://baileys-api:3025
+      BAILEYS_PROVIDER_DEFAULT_API_KEY: ${SERVICE_PASSWORD_64_BAILEYSDEFAULTAPIKEY}
+      BAILEYS_PROVIDER_USE_INTERNAL_HOST_URL: "true"
+      ACTIVE_STORAGE_SERVICE: minio
+      AWS_ACCESS_KEY_ID: ${MINIO_user}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_PORT_ROOT_PASSWORD}
+      AWS_REGION: us-east-1
+      AWS_BUCKET: chatwoot
+      AWS_HOST: minio:9000
+      AWS_ENDPOINT: http://minio:9000
+      AWS_PATH_STYLE: true
+      MAILER_SENDER_EMAIL: ${MAILER_SENDER_EMAIL}
+      SMTP_ADDRESS: ${SMTP_ADDRESS}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_AUTHENTICATION: plain
+    command:
+      - bundle
+      - exec
+      - sidekiq
+      - '-C'
+      - config/sidekiq.yml
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      baileys-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep [s]idekiq || exit 1"]
+      interval: 20s
+      timeout: 20s
+      retries: 10
+    networks:
+      - minha_rede
+
+  # Banco de Dados PostgreSQL
+  postgres:
+    image: pgvector/pg16
+    container_name: postgres
+    restart: always
+    ports:
+      - "5432:5432" # Porta padrão do PostgreSQL
+    environment:
+      POSTGRES_USER: ${SERVICE_USER_POSTGRES}
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
+      POSTGRES_DB: ${POSTGRES_DB:-chatwoot_production}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=pt_BR.UTF-8"
+      volumes:
+      - postgres_data:/var/lib/postgresql/data # Persistência de dados
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 5432 -U ${SERVICE_USER_POSTGRES} -d ${POSTGRES_DB}"]
+      interval: 20s
+      timeout: 20s
+      retries: 10
     networks:
       - minha_rede
 
   # Redis: Cache em memória
-  # Usado para cache e filas em outros serviços.
   redis:
-    image: redis:7-alpine
+    image: redis:alpine
     container_name: redis
-    restart: unless-stopped
+    restart: always
     ports:
       - "6380:6379" # Porta mapeada para evitar conflitos
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD} # Senha do Redis
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"] # Ativa autenticação
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"] # Verifica conectividade
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      REDIS_PASSWORD: ${SERVICE_PASSWORD_REDIS}
+    command: ["redis-server", "--requirepass", "${SERVICE_PASSWORD_REDIS}"]
     volumes:
       - redis_data:/data # Persistência de dados
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "localhost", "-p", "6379", "-a", "${SERVICE_PASSWORD_REDIS}", "ping"]
+      interval: 20s
+      timeout: 20s
+      retries: 10
     networks:
       - minha_rede
 
-  # Exportador de Métricas do Redis
-  # Coleta métricas do Redis para o Prometheus.
-  redis_exporter:
-    image: oliver006/redis_exporter
-    container_name: redis_exporter
-    restart: unless-stopped
+  # Baileys API: Integração com WhatsApp
+  baileys-api:
+    image: ghcr.io/fazer-ai/baileys-api:latest
+    pull_policy: always
+    container_name: baileys-api
+    restart: always
     ports:
-      - "9121:9121" # Porta para métricas
+      - "3025:3025" # Porta para API
+    volumes:
+      - baileys_data:/app/storage # Persistência de dados
     environment:
-      REDIS_ADDR: "redis:6379"
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      NODE_ENV: production
+      REDIS_URL: redis://default:${SERVICE_PASSWORD_REDIS}@redis:6379
+      REDIS_PASSWORD: ${SERVICE_PASSWORD_REDIS}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      BAILEYS_LOG_LEVEL: ${BAILEYS_LOG_LEVEL:-error}
+      BAILEYS_PROVIDER_DEFAULT_API_KEY: ${SERVICE_PASSWORD_64_BAILEYSDEFAULTAPIKEY}
+    command:
+      - sh
+      - "-c"
+      - "bun manage-api-keys create user ${SERVICE_PASSWORD_64_BAILEYSDEFAULTAPIKEY} && bun start"
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3025/status || exit 1"]
+      interval: 20s
+      timeout: 20s
+      retries: 10
     networks:
       - minha_rede
 
   # n8n: Plataforma de automação de fluxos
-  # Integra serviços com fluxos de trabalho personalizados.
   n8n:
     image: n8nio/n8n:latest
     container_name: n8n
-    restart: unless-stopped
+    restart: always
     ports:
       - "5678:5678" # Porta para interface web
     environment:
-      N8N_BASIC_AUTH_ACTIVE: "true" # Autenticação básica
+      N8N_BASIC_AUTH_ACTIVE: "true"
       N8N_BASIC_AUTH_USER: ${N8N_USER}
       N8N_BASIC_AUTH_PASSWORD: ${N8N_PASSWORD}
-      N8N_HOST: host.docker.internal # Host para n8n
-      WEBHOOK_URL: ${WEBHOOK_URL} # URL para webhooks
-      N8N_PROTOCOL: "http" # Protocolo HTTP, já que secure cookie está desativado
+      N8N_HOST: host.docker.internal
+      WEBHOOK_URL: ${WEBHOOK_URL}
+      N8N_PROTOCOL: "http"
       N8N_PORT: 5678
-      N8N_SECURE_COOKIE: "false" # Desativa cookies seguros
-      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE} # Fuso horário
+      N8N_SECURE_COOKIE: "false"
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE}
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
       DB_POSTGRESDB_PORT: 5432
-      DB_POSTGRESDB_USER: ${POSTGRES_USER}
-      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_POSTGRESDB_USER: ${SERVICE_USER_POSTGRES}
+      DB_POSTGRESDB_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
       DB_POSTGRESDB_DATABASE: ${POSTGRES_DB}
       QUEUE_MODE: redis
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      N8N_LOG_LEVEL: debug # Nível de log ajustado para debug
+      REDIS_PASSWORD: ${SERVICE_PASSWORD_REDIS}
+      N8N_LOG_LEVEL: debug
       N8N_LOG_OUTPUT: file
       N8N_LOG_FILE_LOCATION: /home/node/.n8n/n8n.log
-      N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE: "true" # Permite uso de ferramentas de pacotes da comunidade
+      N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE: "true"
       NODE_ENV: production
     volumes:
       - n8n_data:/home/node/.n8n # Persistência de configurações
@@ -162,136 +279,77 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5678/healthz || exit 1"] # Verifica endpoint de saúde
+      test: ["CMD-SHELL", "curl -f http://localhost:5678/healthz || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
     networks:
       - minha_rede
 
-  # Evolution API: Integração com WhatsApp
-  # Gerencia mensagens e interações via WhatsApp.
-  evolution-api:
-    image: atendai/evolution-api:latest
-    container_name: evolution_api
-    restart: unless-stopped
+  # Adminer: Interface web para gerenciamento do PostgreSQL
+  adminer:
+    image: adminer:latest
+    container_name: adminer
+    restart: always
     ports:
-      - "8080:8080" # Porta para API
+      - "8081:8080" # Porta para acesso web
     environment:
-      AUTHENTICATION_TYPE: apikey
-      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
-      DATABASE_ENABLED: "true"
-      DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
-      DATABASE_CONNECTION_DB_PREFIX_NAME: evo
-      CACHE_REDIS_ENABLED: "true"
-      CACHE_REDIS_URI: redis://default:${REDIS_PASSWORD}@redis:6379/6
-      CACHE_REDIS_PREFIX_KEY: evolution
-      CACHE_REDIS_TTL: 604800
-      LOG_LEVEL: info
-      WEBSOCKET_ENABLED: "true"
-      WEBSOCKET_GLOBAL_EVENTS: "true"
-      CONFIG_SESSION_PHONE_NAME: "Evolution API"
-      CONFIG_SESSION_PHONE_VERSION: ${EVOLUTION_PHONE_VERSION}
-      RABBITMQ_ENABLED: "true"
-      RABBITMQ_GLOBAL_ENABLED: "true"
-      RABBITMQ_URI: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
-      RABBITMQ_EXCHANGE_NAME: evolution_exchange
-    volumes:
-      - evolution_store:/evolution/store
-      - evolution_instances:/evolution/instances
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha
+      ADMINER_PLUGINS: "tables-filter tinymce"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"] # Verifica endpoint de saúde
-      interval: 30s
-      timeout: 10s
-      retries: 5
     networks:
       - minha_rede
 
-  # Chatwoot: Plataforma de atendimento ao cliente
-  # Oferece suporte a chats em tempo real e integrações.
-  chatwoot:
-    image: chatwoot/chatwoot:latest
-    container_name: chatwoot
-    restart: unless-stopped
+  # Exportador de Métricas do PostgreSQL
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter
+    container_name: postgres_exporter
+    restart: always
     ports:
-      - "3001:3000" # Porta para interface web
+      - "9187:9187" # Porta para métricas
     environment:
-      # Configurações do banco de dados PostgreSQL
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${POSTGRES_DB}
-      DB_USER: ${POSTGRES_USER}
-      DB_PASS: ${POSTGRES_PASSWORD}
-      # Configurações do Redis
-      REDIS_URL: redis://default:${REDIS_PASSWORD}@redis:6379
-      # Configurações do RabbitMQ
-      AMQP_HOSTNAME: rabbitmq
-      AMQP_USERNAME: ${RABBITMQ_USER}
-      AMQP_PASSWORD: ${RABBITMQ_PASSWORD}
-      AMQP_PORT: 5672
-      AMQP_VHOST: "/"
-      # Configurações gerais do Chatwoot
-      FRONTEND_URL: http://localhost:3001
-      SECRET_KEY_BASE: ${CHATWOOT_SECRET_KEY_BASE} # Chave secreta forte
-      RAILS_ENV: production
-      NODE_ENV: production
-      ACTIVE_STORAGE_SERVICE: local # Armazenamento local (pode mudar para minio)
-      MAILER_SENDER_EMAIL: ${MAILER_SENDER_EMAIL} # E-mail para notificações
-      SMTP_ADDRESS: ${SMTP_ADDRESS} # Configurações de SMTP
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USERNAME: ${SMTP_USERNAME}
-      SMTP_PASSWORD: ${SMTP_PASSWORD}
-      SMTP_AUTHENTICATION: plain
-      TIMEZONE: ${GENERIC_TIMEZONE} # Fuso horário
-      # Integração com MinIO (opcional)
-      AWS_ACCESS_KEY_ID: ${MINIO_USER}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_PORT_ROOT_PASSWORD}
-      AWS_REGION: us-east-1
-      AWS_BUCKET: chatwoot
-      AWS_HOST: minio:9000
-      AWS_ENDPOINT: http://minio:9000
-      AWS_PATH_STYLE: true
-    volumes:
-      - chatwoot_data:/app/storage # Persistência de dados
-      - chatwoot_logs:/app/log # Persistência de logs
+      DATA_SOURCE_NAME: "postgresql://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - minha_rede
+
+  # Exportador de Métricas do Redis
+  redis_exporter:
+    image: oliver006/redis_exporter
+    container_name: redis_exporter
+    restart: always
+    ports:
+      - "9121:9121" # Porta para métricas
+    environment:
+      REDIS_ADDR: "redis:6379"
+      REDIS_PASSWORD: ${SERVICE_PASSWORD_REDIS}
+    depends_on:
       redis:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/v1/health_check || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
     networks:
       - minha_rede
 
   # Ollama: Execução de modelos de linguagem
-  # Suporte a modelos de linguagem locais.
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
-    restart: unless-stopped
+    restart: always
     ports:
       - "11434:11434" # Porta para API
     environment:
       OLLAMA_HOST: 0.0.0.0:11434
       OLLAMA_MODELS: /root/.ollama/models
       OLLAMA_KEEP_ALIVE: 5m
-      OLLAMA_ORIGINS: "*" # Permite todas as origens (revisar em produção)
+      OLLAMA_ORIGINS: "*"
     volumes:
       - ollama_data:/root/.ollama # Persistência de modelos
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"] # Verifica API
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -299,11 +357,10 @@ services:
       - minha_rede
 
   # Prometheus: Sistema de monitoramento
-  # Coleta e armazena métricas dos serviços.
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
-    restart: unless-stopped
+    restart: always
     ports:
       - "9090:9090" # Porta para interface web
     volumes:
@@ -319,11 +376,10 @@ services:
       - minha_rede
 
   # Node Exporter: Métricas do host
-  # Coleta métricas do sistema operacional para o Prometheus.
   node_exporter:
     image: prom/node-exporter:latest
     container_name: node_exporter
-    restart: unless-stopped
+    restart: always
     ports:
       - "9100:9100" # Porta para métricas
     volumes:
@@ -339,11 +395,10 @@ services:
       - minha_rede
 
   # Grafana: Visualização de métricas e logs
-  # Interface para dashboards e análise de dados.
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
-    restart: unless-stopped
+    restart: always
     ports:
       - "3000:3000" # Porta para interface web
     environment:
@@ -366,11 +421,10 @@ services:
       - minha_rede
 
   # Loki: Sistema de logs
-  # Armazena e gerencia logs dos serviços.
   loki:
     image: grafana/loki:latest
     container_name: loki
-    restart: unless-stopped
+    restart: always
     ports:
       - "3100:3100" # Porta para API
     volumes:
@@ -382,11 +436,10 @@ services:
       - minha_rede
 
   # Promtail: Agente de coleta de logs
-  # Envia logs do host para o Loki.
   promtail:
     image: grafana/promtail:latest
     container_name: promtail
-    restart: unless-stopped
+    restart: always
     volumes:
       - /var/log:/var/log:ro
       - ./promtail-config.yml:/etc/promtail/config.yml
@@ -398,11 +451,10 @@ services:
       - minha_rede
 
   # MinIO: Armazenamento de dados
-  # Armazenamento compatível com objetos S3.
   minio:
     image: minio/minio:latest
     container_name: minio
-    restart: unless-stopped
+    restart: always
     ports:
       - "9000:9000" # Porta para API
       - "9001:9001" # Porta para consola web
@@ -421,11 +473,10 @@ services:
       - minha_rede
 
   # RabbitMQ: Sistema de mensagens de filas
-  # Gerencia filas para comunicação assíncrona.
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: rabbitmq
-    restart: unless-stopped
+    restart: always
     ports:
       - "5672:5672" # Porta AMQP
       - "15672:15672" # Porta para interface web
@@ -444,16 +495,14 @@ services:
     networks:
       - minha_rede
 
-# Define volumes persistentes
-# Mantém dados entre reinicializações dos contêineres.
 volumes:
   postgres_data:
-  postgres_backup:
   redis_data:
   n8n_data:
   n8n_logs:
-  evolution_store:
-  evolution_instances:
+  baileys_data:
+  chatwoot_data:
+  chatwoot_logs:
   ollama_data:
   prometheus_data:
   grafana_data:
@@ -461,11 +510,7 @@ volumes:
   minio_data:
   rabbitmq_data:
   rabbitmq_logs:
-  chatwoot_data:
-  chatwoot_logs:
 
-# Define rede personalizada
-# Rede em ponte para comunicação segura entre serviços.
 networks:
   minha_rede:
     driver: bridge
