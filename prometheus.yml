@@ -1,15 +1,50 @@
 global:
   scrape_interval: 15s
+  evaluation_interval: 15s
+
 scrape_configs:
-  - job_name: prometheus
+  # Prometheus (próprias métricas)
+  - job_name: 'prometheus'
     static_configs:
-      - targets: ['localhost:9090']
-  - job_name: postgres
-    static_configs:
-      - targets: ['postgres_exporter:9187']
-  - job_name: redis
-    static_configs:
-      - targets: ['redis_exporter:9121']
-  - job_name: node
+      - targets: ['prometheus:9090']
+
+  # Node Exporter (métricas do host)
+  - job_name: 'node_exporter'
     static_configs:
       - targets: ['node_exporter:9100']
+
+  # Postgres Exporter (métricas do PostgreSQL)
+  - job_name: 'postgres_exporter'
+    static_configs:
+      - targets: ['postgres_exporter:9187']
+
+  # Redis Exporter (métricas do Redis)
+  - job_name: 'redis_exporter'
+    static_configs:
+      - targets: ['redis_exporter:9121']
+
+  # Chatwoot (se disponível, endpoint /metrics)
+  - job_name: 'chatwoot'
+    static_configs:
+      - targets: ['chatwoot:3000']
+    metrics_path: /metrics
+    # Adicione autenticação se necessário
+    # basic_auth:
+    #   username: ${GRAFANA_USER}
+    #   password: ${GRAFANA_PASSWORD}
+
+  # n8n (se disponível, endpoint /metrics)
+  - job_name: 'n8n'
+    static_configs:
+      - targets: ['n8n:5678']
+    metrics_path: /metrics
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # Adicione alertmanagers se necessário
+
+rule_files:
+  # Adicione arquivos de regras de alerta se necessário
+  # - "alert.rules.yml"
