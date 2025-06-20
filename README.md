@@ -1,154 +1,158 @@
-# Sistema de Automação e Atendimento
+# Sistema de Atendimento ao Cliente e Monitoramento
 
-Este projeto configura um ambiente Docker Compose com serviços para automação, atendimento ao cliente, armazenamento, monitoramento e integração com WhatsApp. Abaixo está a documentação para configurar, executar e gerenciar o sistema.
+Este projeto configura uma stack completa para atendimento ao cliente, automação de fluxos, armazenamento de dados e monitoramento utilizando Docker Compose. A seguir, apresentamos uma visão geral do sistema, instruções de configuração e execução.
 
 ## Visão Geral
 
-O ambiente inclui os seguintes serviços:
-- **Chatwoot**: Plataforma de atendimento ao cliente com suporte a chats em tempo real e integração com WhatsApp via Baileys API.
-- **n8n**: Plataforma de automação de fluxos para integração de serviços.
-- **Baileys API**: Integração com WhatsApp para envio e recebimento de mensagens.
-- **PostgreSQL**: Banco de dados relacional (com suporte a `pgvector` para extensões vetoriais).
-- **Redis**: Cache em memória e filas para Chatwoot e n8n.
-- **RabbitMQ**: Sistema de mensagens para processamento assíncrono.
-- **MinIO**: Armazenamento de objetos compatível com S3.
-- **Prometheus**: Monitoramento de métricas.
-- **Grafana**: Visualização de métricas e logs.
-- **Loki**: Armazenamento de logs.
-- **Promtail**: Coleta de logs para o Loki.
-- **Ollama**: Execução de modelos de linguagem locais.
-- **Adminer**: Interface web para gerenciamento do PostgreSQL.
-- **Exporters**: `postgres_exporter`, `redis_exporter` e `node_exporter` para métricas específicas.
+O sistema integra as seguintes ferramentas:
 
-Todos os serviços estão conectados via rede `minha_rede` e usam volumes para persistência de dados.
+- **Chatwoot**: Plataforma de atendimento ao cliente com suporte a chats em tempo real (interface web e workers Sidekiq).
+- **PostgreSQL**: Banco de dados relacional com suporte a vetores (pgvector).
+- **Redis**: Cache em memória para processamento assíncrono.
+- **RabbitMQ**: Sistema de mensagens para filas.
+- **Baileys API**: Integração com WhatsApp.
+- **n8n**: Plataforma de automação de fluxos de trabalho.
+- **Adminer**: Interface web para gerenciamento do PostgreSQL.
+- **Prometheus**: Sistema de monitoramento de métricas.
+- **Grafana**: Visualização de métricas e logs.
+- **Loki e Promtail**: Sistema de coleta e armazenamento de logs.
+- **Node Exporter e Exporters**: Exportadores de métricas para PostgreSQL e Redis.
+- **MinIO**: Armazenamento de objetos compatível com S3.
+
+Todos os serviços são configurados para rodar em uma rede Docker chamada `minha_rede`, com persistência de dados via volumes.
 
 ## Pré-requisitos
 
 - **Docker** e **Docker Compose** instalados.
-- Pelo menos 8 GB de RAM e 4 CPUs recomendados para rodar todos os serviços.
-- Sistema operacional compatível (Linux, Windows com WSL2, ou macOS com Docker Desktop).
+- Um arquivo `.env` com as variáveis de ambiente necessárias (veja a seção abaixo).
 
 ## Configuração
 
-1. **Clone o repositório ou copie os arquivos**:
-   - `docker-compose.yml`
-   - `prometheus.yml`
-   - `loki-config.yml`
-   - `promtail-config.yml`
-   - `.env.example`
+1. **Crie o arquivo `.env`**:
+   Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis. Substitua os valores conforme necessário:
 
-2. **Crie o arquivo `.env`**:
-   - Copie o arquivo `.env.example` para `.env`:
-     ```bash
-     cp .env.example .env
-     ```
-   - Edite o `.env` com valores seguros:
-     ```env
-     # PostgreSQL
-     SERVICE_USER_POSTGRES=postgres
-     SERVICE_PASSWORD_POSTGRES=sua_senha_forte
-     POSTGRES_DB=chatwoot_production
+   ```env
+   # Configurações gerais
+   SERVICE_PASSWORD_64_SECRETKEYBASE=insira_uma_chave_secreta_de_64_caracteres
+   SERVICE_PASSWORD_64_BAILEYSDEFAULTAPIKEY=insira_uma_chave_secreta_de_64_caracteres
+   GENERIC_TIMEZONE=America/Sao_Paulo
+   FRONTEND_URL=http://localhost:3001
+   WEBHOOK_URL=http://localhost:5678
+   LOG_LEVEL=info
+   BAILEYS_LOG_LEVEL=error
 
-     # Redis
-     SERVICE_PASSWORD_REDIS=sua_senha_forte
+   # PostgreSQL
+   SERVICE_USER_POSTGRES=chatwoot
+   SERVICE_PASSWORD_POSTGRES=sua_senha_segura
+   POSTGRES_DB=chatwoot_production
 
-     # n8n
-     N8N_USER=admin
-     N8N_PASSWORD=sua_senha_forte
-     WEBHOOK_URL=http://host.docker.internal:5678
-     GENERIC_TIMEZONE=America/Sao_Paulo
+   # Redis
+   SERVICE_PASSWORD_REDIS=sua_senha_segura
 
-     # Chatwoot
-     SERVICE_PASSWORD_64_SECRETKEYBASE=sua_chave_secreta_64_caracteres
-     MAILER_SENDER_EMAIL=support@seu_dominio.com
-     SMTP_ADDRESS=smtp.seu_provedor.com
-     SMTP_PORT=587
-     SMTP_USERNAME=seu_usuario_smtp
-     SMTP_PASSWORD=sua_senha_smtp
-     FRONTEND_URL=http://localhost:3001
-     BAILEYS_PROVIDER_DEFAULT_CLIENT_NAME=Chatwoot
-     SERVICE_PASSWORD_64_BAILEYSDEFAULTAPIKEY=sua_chave_api_64_caracteres
+   # RabbitMQ
+   RABBITMQ_USER=guest
+   RABBITMQ_PASSWORD=sua_senha_segura
 
-     # MinIO
-     MINIO_USER=minioadmin
-     MINIO_PORT_ROOT_PASSWORD=sua_senha_forte
+   # SMTP (e-mail)
+   MAILER_SENDER_EMAIL=seu_email@dominio.com
+   SMTP_ADDRESS=smtp.seu_provedor.com
+   SMTP_PORT=587
+   SMTP_USERNAME=seu_usuario_smtp
+   SMTP_PASSWORD=sua_senha_smtp
 
-     # RabbitMQ
-     RABBITMQ_USER=guest
-     RABBITMQ_PASSWORD=sua_senha_forte
+   # n8n
+   N8N_USER=admin
+   N8N_PASSWORD=sua_senha_segura
 
-     # Grafana
-     GRAFANA_USER=admin
-     GRAFANA_PASSWORD=sua_senha_forte
+   # Grafana
+   GRAFANA_USER=admin
+   GRAFANA_PASSWORD=sua_senha_segura
 
-     # Baileys API
-     LOG_LEVEL=info
-     BAILEYS_LOG_LEVEL=error
-     ```
-   - Gere chaves seguras para `SERVICE_PASSWORD_64_SECRETKEYBASE` e `SERVICE_PASSWORD_64_BAILEYSDEFAULTAPIKEY` (ex.: use `openssl rand -hex 32`).
-
-3. **Crie o bucket no MinIO**:
-   - Após iniciar os serviços, acesse `http://localhost:9001` e crie um bucket chamado `chatwoot` para armazenamento de arquivos do Chatwoot.
-
-## Como Executar
-
-1. **Inicie os serviços**:
-   ```bash
-   docker-compose up -d
+   # MinIO
+   MINIO_USER=admin
+   MINIO_PORT_ROOT_PASSWORD=sua_senha_segura
    ```
 
-2. **Verifique o status**:
-   - Use `docker-compose ps` para confirmar que todos os serviços estão rodando.
-   - Acesse os healthchecks via logs: `docker-compose logs <nome_do_servico>`.
+2. **Arquivos de configuração adicionais**:
+   - Crie o arquivo `prometheus.yml` para o Prometheus com as configurações de scraping.
+   - Crie o arquivo `loki-config.yml` para o Loki.
+   - Crie o arquivo `promtail-config.yml` para o Promtail.
 
-3. **Acesse os serviços**:
-   - **Chatwoot**: `http://localhost:3001` (configure a conta de administrador na primeira inicialização).
-   - **n8n**: `http://localhost:5678` (use `N8N_USER` e `N8N_PASSWORD`).
-   - **Adminer**: `http://localhost:8081` (gerenciamento do PostgreSQL).
-   - **MinIO**: `http://localhost:9001` (use `MINIO_USER` e `MINIO_PORT_ROOT_PASSWORD`).
-   - **Grafana**: `http://localhost:3000` (use `GRAFANA_USER` e `GRAFANA_PASSWORD`).
-   - **Prometheus**: `http://localhost:9090` (verifique métricas em `/targets`).
-   - **RabbitMQ**: `http://localhost:15672` (use `RABBITMQ_USER` e `RABBITMQ_PASSWORD`).
-   - **Ollama**: `http://localhost:11434` (API para modelos de linguagem).
-   - **Baileys API**: `http://localhost:3025` (integração com WhatsApp).
+   Exemplo básico para `prometheus.yml`:
 
-## Configuração do Grafana
+   ```yaml
+   global:
+     scrape_interval: 15s
+   scrape_configs:
+     - job_name: 'prometheus'
+       static_configs:
+         - targets: ['localhost:9090']
+     - job_name: 'postgres'
+       static_configs:
+         - targets: ['postgres_exporter:9187']
+     - job_name: 'redis'
+       static_configs:
+         - targets: ['redis_exporter:9121']
+     - job_name: 'node'
+       static_configs:
+         - targets: ['node_exporter:9100']
+   ```
 
-1. **Adicione fontes de dados**:
-   - **Prometheus**: URL `http://prometheus:9090`.
-   - **Loki**: URL `http://loki:3100`.
-2. **Crie dashboards**:
-   - Visualize métricas do **node_exporter** (CPU, memória), **postgres_exporter** (banco de dados), e **redis_exporter** (cache).
-   - Consulte logs com queries como `{job="chatwoot"}` ou `{job="n8n"}`.
+   Consulte a documentação oficial de Loki e Promtail para configurar `loki-config.yml` e `promtail-config.yml`.
 
-## Notas para Produção
+## Executando o Projeto
 
-- **HTTPS**: Configure um proxy reverso (Nginx/Traefik) com certificados SSL para todos os serviços expostos (`Chatwoot`, `n8n`, `Grafana`, etc.).
-- **Segurança**:
-  - Substitua `host.docker.internal` em `WEBHOOK_URL` e `N8N_HOST` por um domínio público.
-  - Restrinja `OLLAMA_ORIGINS` para origens específicas (não use `*`).
-  - Crie vhosts específicos no **RabbitMQ** para cada serviço.
-- **Monitoramento**:
-  - Habilite endpoints `/metrics` no **Chatwoot** e **n8n**, se disponíveis, e atualize `prometheus.yml`.
-  - Ajuste a retenção de logs no `loki-config.yml` (atualmente 14 dias).
-- **Backup**:
-  - Considere adicionar um serviço de backup para o **PostgreSQL** (ex.: `prodrigestivill/postgres-backup-local`).
-- **Escalabilidade**:
-  - Configure armazenamento externo (ex.: S3 com MinIO) para o **Loki**, se necessário.
-  - Ajuste os recursos (CPU, RAM) alocados para cada serviço.
+1. **Inicie os serviços**:
+   Na raiz do projeto, execute:
 
-## Estrutura de Arquivos
+   ```bash
+   docker compose up -d
+   ```
 
-- `docker-compose.yml`: Define os serviços, volumes e rede.
-- `.env`: Variáveis de ambiente (crie a partir de `.env.example`).
-- `prometheus.yml`: Configuração do Prometheus para coleta de métricas.
-- `loki-config.yml`: Configuração do Loki para armazenamento de logs.
-- `promtail-config.yml`: Configuração do Promtail para coleta de logs.
+2. **Acesse os serviços**:
+   - **Chatwoot**: `http://localhost:3001`
+   - **n8n**: `http://localhost:5678`
+   - **Adminer**: `http://localhost:8081`
+   - **Prometheus**: `http://localhost:9090`
+   - **Grafana**: `http://localhost:3000`
+   - **Loki**: `http://localhost:3100`
+   - **RabbitMQ**: `http://localhost:15672`
+   - **MinIO**: `http://localhost:9001` (console) e `http://localhost:9000` (API)
 
-## Solução de Problemas
+3. **Verifique os logs**:
+   Para verificar os logs de um serviço específico:
 
-- **Serviço não inicia**: Verifique logs com `docker-compose logs <nome_do_servico>`.
-- **Portas em conflito**: Ajuste as portas no `docker-compose.yml` se houver conflitos.
-- **Métricas ausentes**: Conf全世界
+   ```bash
+   docker compose logs <nome_do_servico>
+   ```
 
-Se precisar de ajuda adicional, entre em contato pelo e-mail de suporte ou abra uma issue no repositório.
+## Monitoramento e Logs
+
+- **Grafana**: Configure dashboards para visualizar métricas do Prometheus e logs do Loki.
+- **Prometheus**: Monitore métricas do PostgreSQL, Redis e do host.
+- **Loki/Promtail**: Coleta logs dos containers e do sistema.
+
+## Parando o Projeto
+
+Para parar todos os serviços:
+
+```bash
+docker compose down
+```
+
+Para parar e remover os volumes (cuidado, isso apagará os dados persistentes):
+
+```bash
+docker compose down -v
+```
+
+## Notas Adicionais
+
+- Certifique-se de que as portas mapeadas (3001, 5678, 8081, etc.) não estão em uso.
+- Ajuste as variáveis de ambiente no arquivo `.env` para corresponder ao seu ambiente.
+- Para ambientes de produção, configure HTTPS e ajuste as senhas para valores seguros.
+- Consulte a documentação oficial de cada ferramenta para configurações avançadas.
+
+## Licença
+
+Este projeto é configurado para uso interno e não inclui uma licença específica. Consulte as licenças dos projetos individuais (Chatwoot, n8n, etc.) para detalhes.
