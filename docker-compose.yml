@@ -242,7 +242,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${SERVICE_PASSWORD_REDIS}
-      N8N_LOG_LEVEL: debug
+      N8N_LOG_LEVEL: ${LOG_LEVEL:-info}
       N8N_LOG_OUTPUT: file
       N8N_LOG_FILE_LOCATION: /home/node/.n8n/n8n.log
       N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE: "true"
@@ -356,7 +356,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
       GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-piechart-panel,grafana-simple-json-datasource
       GF_ANALYTICS_REPORTING_ENABLED: "false"
-      GF_LOG_LEVEL: info
+      GF_LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - grafana_data:/var/lib/grafana # Persistência de dados
     depends_on:
@@ -445,6 +445,35 @@ services:
     networks:
       - minha_rede
 
+  # Crawl4AI: Ferramenta de web crawling
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    container_name: crawl4ai
+    restart: always
+    ports:
+      - "11235:11235" # Porta para API do Crawl4AI
+    environment:
+      USE_CRAWL4AI: "true"
+      ENABLE_CHROMIUM: "true"
+      CRAWL4AI_API_URL: "http://localhost:11235"
+      CRAWL4AI_API_KEY: ${CRAWL4AI_API_KEY}
+      CRAWL4AI_TIMEOUT: 30
+      CRAWL4AI_SMART_EXTRACTION: "true"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    volumes:
+      - crawl4ai_data:/app/storage # Persistência de dados do crawling
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11235/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - minha_rede
+
 volumes:
   postgres_data:
   redis_data:
@@ -459,6 +488,7 @@ volumes:
   rabbitmq_data:
   rabbitmq_logs:
   minio_data:
+  crawl4ai_data:
 
 networks:
   minha_rede:
