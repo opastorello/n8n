@@ -132,11 +132,12 @@ services:
       N8N_BASIC_AUTH_ACTIVE: "true" # Autenticação básica
       N8N_BASIC_AUTH_USER: ${N8N_USER}
       N8N_BASIC_AUTH_PASSWORD: ${N8N_PASSWORD}
-      N8N_HOST: "localhost"
-      N8N_PROTOCOL: "http" # Alterado para http, já que secure cookie está desativado
+      N8N_HOST: host.docker.internal # Host para n8n
+      WEBHOOK_URL: ${WEBHOOK_URL} # URL para webhooks
+      N8N_PROTOCOL: "http" # Protocolo HTTP, já que secure cookie está desativado
       N8N_PORT: 5678
       N8N_SECURE_COOKIE: "false" # Desativa cookies seguros
-      GENERIC_TIMEZONE: ${TZ} # Fuso horário
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE} # Fuso horário
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
       DB_POSTGRESDB_PORT: 5432
@@ -147,9 +148,10 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
-      N8N_LOG_LEVEL: info
+      N8N_LOG_LEVEL: debug # Nível de log ajustado para debug
       N8N_LOG_OUTPUT: file
       N8N_LOG_FILE_LOCATION: /home/node/.n8n/n8n.log
+      N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE: "true" # Permite uso de ferramentas de pacotes da comunidade
       NODE_ENV: production
     volumes:
       - n8n_data:/home/node/.n8n # Persistência de configurações
@@ -205,6 +207,68 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"] # Verifica endpoint de saúde
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - minha_rede
+
+  # Chatwoot: Plataforma de atendimento ao cliente
+  # Oferece suporte a chats em tempo real e integrações.
+  chatwoot:
+    image: chatwoot/chatwoot:latest
+    container_name: chatwoot
+    restart: unless-stopped
+    ports:
+      - "3001:3000" # Porta para interface web
+    environment:
+      # Configurações do banco de dados PostgreSQL
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+      # Configurações do Redis
+      REDIS_URL: redis://default:${REDIS_PASSWORD}@redis:6379
+      # Configurações do RabbitMQ
+      AMQP_HOSTNAME: rabbitmq
+      AMQP_USERNAME: ${RABBITMQ_USER}
+      AMQP_PASSWORD: ${RABBITMQ_PASSWORD}
+      AMQP_PORT: 5672
+      AMQP_VHOST: "/"
+      # Configurações gerais do Chatwoot
+      FRONTEND_URL: http://localhost:3001
+      SECRET_KEY_BASE: ${CHATWOOT_SECRET_KEY_BASE} # Chave secreta forte
+      RAILS_ENV: production
+      NODE_ENV: production
+      ACTIVE_STORAGE_SERVICE: local # Armazenamento local (pode mudar para minio)
+      MAILER_SENDER_EMAIL: ${MAILER_SENDER_EMAIL} # E-mail para notificações
+      SMTP_ADDRESS: ${SMTP_ADDRESS} # Configurações de SMTP
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_AUTHENTICATION: plain
+      TIMEZONE: ${GENERIC_TIMEZONE} # Fuso horário
+      # Integração com MinIO (opcional)
+      AWS_ACCESS_KEY_ID: ${MINIO_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_PORT_ROOT_PASSWORD}
+      AWS_REGION: us-east-1
+      AWS_BUCKET: chatwoot
+      AWS_HOST: minio:9000
+      AWS_ENDPOINT: http://minio:9000
+      AWS_PATH_STYLE: true
+    volumes:
+      - chatwoot_data:/app/storage # Persistência de dados
+      - chatwoot_logs:/app/log # Persistência de logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/v1/health_check || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -346,7 +410,7 @@ services:
       MINIO_ROOT_USER: ${MINIO_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_PORT_ROOT_PASSWORD}
     volumes:
-      - minio_data:/data # Persistencia de dados
+      - minio_data:/data # Persistência de dados
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -364,7 +428,7 @@ services:
     restart: unless-stopped
     ports:
       - "5672:5672" # Porta AMQP
-      - "15672:15672" # Porta para interface web (corrigida)
+      - "15672:15672" # Porta para interface web
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
@@ -397,6 +461,8 @@ volumes:
   minio_data:
   rabbitmq_data:
   rabbitmq_logs:
+  chatwoot_data:
+  chatwoot_logs:
 
 # Define rede personalizada
 # Rede em ponte para comunicação segura entre serviços.
