@@ -41,15 +41,8 @@ services:
       BAILEYS_PROVIDER_DEFAULT_URL: http://baileys-api:3025
       BAILEYS_PROVIDER_DEFAULT_API_KEY: ${SERVICE_PASSWORD_64_BAILEYSDEFAULTAPIKEY}
       BAILEYS_PROVIDER_USE_INTERNAL_HOST_URL: "true"
-      # Integração com MinIO (armazenamento)
-      ACTIVE_STORAGE_SERVICE: minio
-      AWS_ACCESS_KEY_ID: ${MINIO_USER}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_PORT_ROOT_PASSWORD}
-      AWS_REGION: us-east-1
-      AWS_BUCKET: chatwoot
-      AWS_HOST: minio:9000
-      AWS_ENDPOINT: http://minio:9000
-      AWS_PATH_STYLE: true
+      # Configurações do Active Storage
+      ACTIVE_STORAGE_SERVICE: local
       # Configurações de SMTP
       MAILER_SENDER_EMAIL: ${MAILER_SENDER_EMAIL}
       SMTP_ADDRESS: ${SMTP_ADDRESS}
@@ -74,14 +67,10 @@ services:
           - rails
           - db:chatwoot_prepare
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      baileys-api:
-        condition: service_healthy
+      - postgres
+      - redis
+      - rabbitmq
+      - baileys-api
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- --header='Accept: text/html' http://127.0.0.1:3000/ || exit 1"]
       interval: 60s
@@ -97,7 +86,7 @@ services:
     container_name: chatwoot_sidekiq
     restart: always
     volumes:
-      - chatwoot_data:/app/storage #(branch: Persistência de dados
+      - chatwoot_data:/app/storage # Persistência de dados
       - chatwoot_logs:/app/log # Persistência de logs
     environment:
       # Mesmas variáveis do serviço chatwoot
@@ -125,14 +114,9 @@ services:
       BAILEYS_PROVIDER_DEFAULT_URL: http://baileys-api:3025
       BAILEYS_PROVIDER_DEFAULT_API_KEY: ${SERVICE_PASSWORD_64_BAILEYSDEFAULTAPIKEY}
       BAILEYS_PROVIDER_USE_INTERNAL_HOST_URL: "true"
-      ACTIVE_STORAGE_SERVICE: minio
-      AWS_ACCESS_KEY_ID: ${MINIO_USER}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_PORT_ROOT_PASSWORD}
-      AWS_REGION: us-east-1
-      AWS_BUCKET: chatwoot
-      AWS_HOST: minio:9000
-      AWS_ENDPOINT: http://minio:9000
-      AWS_PATH_STYLE: true
+      # Configurações do Active Storage
+      ACTIVE_STORAGE_SERVICE: local
+      # Configurações de SMTP
       MAILER_SENDER_EMAIL: ${MAILER_SENDER_EMAIL}
       SMTP_ADDRESS: ${SMTP_ADDRESS}
       SMTP_PORT: ${SMTP_PORT}
@@ -146,14 +130,10 @@ services:
       - '-C'
       - config/sidekiq.yml
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      baileys-api:
-        condition: service_healthy
+      - postgres
+      - redis
+      - rabbitmq
+      - baileys-api
     healthcheck:
       test: ["CMD-SHELL", "ps aux | grep [s]idekiq || exit 1"]
       interval: 20s
@@ -226,8 +206,7 @@ services:
       - "-c"
       - "bun manage-api-keys create user ${SERVICE_PASSWORD_64_BAILEYSDEFAULTAPIKEY} && bun start"
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3025/status || exit 1"]
       interval: 20s
@@ -326,7 +305,7 @@ services:
         condition: service_healthy
     networks:
       - minha_rede
-      
+
   # Prometheus: Sistema de monitoramento
   prometheus:
     image: prom/prometheus:latest
@@ -421,28 +400,6 @@ services:
     networks:
       - minha_rede
 
-  # MinIO: Armazenamento de dados
-  minio:
-    image: minio/minio:latest
-    container_name: minio
-    restart: always
-    ports:
-      - "9000:9000" # Porta para API
-      - "9001:9001" # Porta para consola web
-    environment:
-      MINIO_ROOT_USER: ${MINIO_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_PORT_ROOT_PASSWORD}
-    volumes:
-      - minio_data:/data # Persistência de dados
-    command: server /data --console-address ":9001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-    networks:
-      - minha_rede
-
   # RabbitMQ: Sistema de mensagens de filas
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -466,6 +423,28 @@ services:
     networks:
       - minha_rede
 
+  # MinIO: Armazenamento de dados
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: always
+    ports:
+      - "9000:9000" # Porta para API
+      - "9001:9001" # Porta para consola web
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PORT_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data # Persistência de dados
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - minha_rede
+
 volumes:
   postgres_data:
   redis_data:
@@ -477,9 +456,9 @@ volumes:
   prometheus_data:
   grafana_data:
   loki_data:
-  minio_data:
   rabbitmq_data:
   rabbitmq_logs:
+  minio_data:
 
 networks:
   minha_rede:
