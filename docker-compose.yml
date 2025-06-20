@@ -164,7 +164,7 @@ services:
 
   # Banco de Dados PostgreSQL
   postgres:
-    image: pgvector/pg16
+    image: pgvector/pgvector:pg16
     container_name: postgres
     restart: always
     ports:
@@ -174,7 +174,7 @@ services:
       POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
       POSTGRES_DB: ${POSTGRES_DB:-chatwoot_production}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=pt_BR.UTF-8"
-      volumes:
+    volumes:
       - postgres_data:/var/lib/postgresql/data # Persistência de dados
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h localhost -p 5432 -U ${SERVICE_USER_POSTGRES} -d ${POSTGRES_DB}"]
