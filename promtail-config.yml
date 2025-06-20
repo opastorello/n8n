@@ -1,15 +1,78 @@
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
+
 positions:
   filename: /tmp/positions.yaml
+
 clients:
   - url: http://loki:3100/loki/api/v1/push
+
 scrape_configs:
+  # Logs do Chatwoot
+  - job_name: chatwoot
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: chatwoot
+          __path__: /app/log/*.log
+    pipeline_stages:
+      - match:
+          selector: '{job="chatwoot"}'
+          stages:
+            - regex:
+                expression: '.*'
+            - labels:
+                service: chatwoot
+
+  # Logs do n8n
+  - job_name: n8n
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: n8n
+          __path__: /home/node/.n8n/logs/*.log
+    pipeline_stages:
+      - match:
+          selector: '{job="n8n"}'
+          stages:
+            - regex:
+                expression: '.*'
+            - labels:
+                service: n8n
+
+  # Logs do RabbitMQ
+  - job_name: rabbitmq
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: rabbitmq
+          __path__: /var/log/rabbitmq/*.log
+    pipeline_stages:
+      - match:
+          selector: '{job="rabbitmq"}'
+          stages:
+            - regex:
+                expression: '.*'
+            - labels:
+                service: rabbitmq
+
+  # Logs do host (gerais)
   - job_name: system
     static_configs:
       - targets:
           - localhost
         labels:
-          job: varlogs
+          job: system
           __path__: /var/log/*.log
+    pipeline_stages:
+      - match:
+          selector: '{job="system"}'
+          stages:
+            - regex:
+                expression: '.*'
+            - labels:
+                service: system
